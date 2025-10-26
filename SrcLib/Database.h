@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <mutex>
+#include <queue>
 
 #include <pqxx/pqxx>
 
@@ -11,7 +13,8 @@ public:
       int port,
       const std::string& dbname,
       const std::string& user,
-      const std::string& password);
+      const std::string& password,
+      size_t pool_size);
 
    ~Database();
 
@@ -21,8 +24,12 @@ public:
    void InsertWord(const std::string& word);
    long GetWordId(const std::string& word);
    void InsertIndex(long doc_id, long word_id, int frequency);
-   pqxx::connection& GetConnection();
+
+   std::shared_ptr<pqxx::connection> GetConnection();
+   void ReleaseConnection(std::shared_ptr<pqxx::connection> conn);
 
 private:
-   pqxx::connection* connection = nullptr;
+   std::string ConnStr;
+   std::mutex PoolMutex;
+   std::queue<std::shared_ptr<pqxx::connection>> ConnPool;
 };

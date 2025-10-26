@@ -20,7 +20,7 @@ int main()
       std::string dbname = config.Get("database", "dbname");
       std::string user = config.Get("database", "user");
       std::string password = config.Get("database", "password");
-      Database db(host, port, dbname, user, password);
+      Database db(host, port, dbname, user, password, std::thread::hardware_concurrency() - 1);
 
       std::string start_url = config.Get("spider", "start_url");
       int max_depth = std::stoi(config.Get("spider", "max_depth"));

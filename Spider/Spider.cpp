@@ -11,44 +11,95 @@ std::string Spider::FetchPage(const std::string& url)
    namespace beast = boost::beast;
    namespace http = beast::http;
    namespace net = boost::asio;
+   namespace ssl = net::ssl;
    using tcp = net::ip::tcp;
 
-   if (url.substr(0, 7) != "http://") {
-      return "";
-   }
-
-   size_t host_start = 7;
-   size_t path_start = url.find('/', host_start);
-   std::string host = url.substr(host_start, path_start - host_start);
-   std::string path = (path_start == std::string::npos) ? "/" : url.substr(path_start);
-
-   try
+   if (url.substr(0, 7) == "http://")
    {
-      net::io_context ioc;
-      tcp::resolver resolver(ioc);
-      beast::tcp_stream stream(ioc);
-      auto const results = resolver.resolve(host, "80");
-      stream.connect(results);
+      size_t host_start = 7;
+      size_t path_start = url.find('/', host_start);
+      std::string host = url.substr(host_start, path_start - host_start);
+      std::string path = (path_start == std::string::npos) ? "/" : url.substr(path_start);
 
-      http::request<http::string_body> req{ http::verb::get, path, 11 };
-      req.set(http::field::host, host);
-      req.set(http::field::user_agent, "SearchEngine Spider/1.0");
+      try
+      {
+         net::io_context ioc;
+         tcp::resolver resolver(ioc);
+         beast::tcp_stream stream(ioc);
+         auto const results = resolver.resolve(host, "80");
+         stream.connect(results);
 
-      http::write(stream, req);
-      beast::flat_buffer buffer;
-      http::response<http::dynamic_body> res;
-      http::read(stream, buffer, res);
+         http::request<http::string_body> req{ http::verb::get, path, 11 };
+         req.set(http::field::host, host);
+         req.set(http::field::user_agent, "SearchEngine Spider/1.0");
 
-      if (res.result() != http::status::ok) {
+         http::write(stream, req);
+         beast::flat_buffer buffer;
+         http::response<http::string_body> res;
+         http::read(stream, buffer, res);
+
+         if (res.result() != http::status::ok) {
+            return "";
+         }
+
+         return res.body();
+      }
+      catch (const std::exception& e)
+      {
+         std::cout << "HTTP exception: " << e.what() << std::endl;
          return "";
       }
+   }
+   else if (url.substr(0, 8) == "https://")
+   {
+      size_t host_start = 8;
+      size_t path_start = url.find('/', host_start);
+      std::string host = url.substr(host_start, path_start - host_start);
+      std::string path = (path_start == std::string::npos) ? "/" : url.substr(path_start);
 
-      return beast::buffers_to_string(res.body().data());
+      try
+      {
+         net::io_context ioc;
+         ssl::context ctx(ssl::context::tls_client);
+         ctx.set_default_verify_paths();
+         ctx.set_verify_mode(ssl::verify_none);
+
+         tcp::resolver resolver(ioc);
+         beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
+
+         auto const results = resolver.resolve(host, "443");
+         beast::get_lowest_layer(stream).connect(results);
+         SSL_set_tlsext_host_name(stream.native_handle(), host.c_str());
+         stream.handshake(ssl::stream_base::client);
+
+         http::request<http::string_body> req{ http::verb::get, path, 11 };
+         req.set(http::field::host, host);
+         req.set(http::field::user_agent, "SearchEngine Spider/1.0");
+
+         http::write(stream, req);
+         beast::flat_buffer buffer;
+         http::response<http::string_body> res;
+         http::read(stream, buffer, res);
+
+         beast::error_code error_code;
+         stream.shutdown(error_code);
+         if (error_code) {
+            throw beast::system_error(error_code);
+         }
+
+         return res.body();
+      }
+      catch (const std::exception& e)
+      {
+         std::cout << " HTTPS error: " << e.what() << std::endl;
+         return "";
+      }
    }
-   catch (...)
-{
-      return "";
+   else {
+      std::cout << "Invalid url" << std::endl;
    }
+
+   return "";
 }
 
 void Spider::ProcessPage(const std::string& url, int depth)
@@ -128,7 +179,7 @@ void Spider::Run()
       UrlQueue.emplace(StartUrl, 1);
    }
 
-   int num_threads = std::min(4u, std::thread::hardware_concurrency());
+   int num_threads = std::min(4u, std::thread::hardware_concurrency() - 1);
    for (int i = 0; i < num_threads; ++i) {
       Workers.emplace_back(&Spider::Worker, this);
    }

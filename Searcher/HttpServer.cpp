@@ -106,7 +106,9 @@ std::vector<std::pair<std::string, int>> HttpServer::PerformSearch(Database& db,
       return {};
    }
 
-   pqxx::work txn(db.GetConnection());
+   auto conn = db.GetConnection();
+   pqxx::work txn(*conn);
+
    std::ostringstream sql;
    sql << "SELECT d.url, SUM(i.frequency) AS total_freq "
       << "FROM documents d "
@@ -125,6 +127,7 @@ std::vector<std::pair<std::string, int>> HttpServer::PerformSearch(Database& db,
       << " ORDER BY total_freq DESC LIMIT 10";
 
    auto res = txn.exec(sql.str());
+   db.ReleaseConnection(conn);
 
    std::vector<std::pair<std::string, int>> results;
    for (const auto& row : res) {

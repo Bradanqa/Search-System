@@ -23,7 +23,7 @@ int main()
       std::string dbname = config.Get("database", "dbname");
       std::string user = config.Get("database", "user");
       std::string password = config.Get("database", "password");
-      Database db(host, port_db, dbname, user, password);
+      Database db(host, port_db, dbname, user, password, std::thread::hardware_concurrency() - 1);
 
       int port_http = std::stoi(config.Get("searcher", "port"));
       HttpServer server(port_http, db);
