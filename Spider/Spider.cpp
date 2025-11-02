@@ -6,13 +6,20 @@ Spider::Spider(const std::string& start_url, int max_depth, Database& db)
 {
 }
 
-std::string Spider::FetchPage(const std::string& url)
+std::string Spider::FetchPage(const std::string& url, int redirect_count)
 {
    namespace beast = boost::beast;
    namespace http = beast::http;
    namespace net = boost::asio;
    namespace ssl = net::ssl;
    using tcp = net::ip::tcp;
+
+   const int MAX_REDIRECTS = 3;
+   if (redirect_count > MAX_REDIRECTS)
+   {
+      std::cout << "Too many redirects for: " << url << std::endl;
+      return "";
+   }
 
    if (url.substr(0, 7) == "http://")
    {
@@ -81,12 +88,30 @@ std::string Spider::FetchPage(const std::string& url)
          http::response<http::string_body> res;
          http::read(stream, buffer, res);
 
-         beast::error_code error_code;
-         stream.shutdown(error_code);
-         if (error_code) {
-            throw beast::system_error(error_code);
+         if (http::status::moved_permanently <= res.result() && res.result() < http::status::bad_request)
+         {
+            auto it = res.find(http::field::location);
+            if (it != res.end())
+            {
+               std::string new_url = it->value();
+               if (new_url.substr(0, 4) != "http")
+               {
+                  size_t scheme_end = url.find("://");
+                  if (scheme_end != std::string::npos)
+                  {
+                     size_t host_end = url.find('/', scheme_end + 3);
+                     std::string base = url.substr(0, host_end);
+                     if (new_url[0] == '/') {
+                        new_url = base + new_url;
+                     } else {
+                        return "";
+                     }
+                  }
+               }
+               std::cout << "Redirecting: " << url << " to " << new_url << std::endl;
+               return FetchPage(new_url, redirect_count + 1);
+            }
          }
-
          return res.body();
       }
       catch (const std::exception& e)

@@ -28,7 +28,7 @@ public:
 
 private:
    void Worker();
-   std::string FetchPage(const std::string& url);
+   std::string FetchPage(const std::string& url, int redirect_count = 0);
    void ProcessPage(const std::string& url, int depth);
 
    std::string StartUrl;
